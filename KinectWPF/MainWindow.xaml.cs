@@ -30,7 +30,7 @@ namespace KinectWPF
         private DepthImagePixel[] depthPixels;
         private WriteableBitmap depthBitmap;
         private byte[] depthBufferPixels;
-
+        // Esqueleto
         public MainWindow()
         {
             InitializeComponent();
@@ -79,7 +79,7 @@ namespace KinectWPF
                 // Manejador del evento de profundidad
                 sensor.DepthFrameReady += SensorDepthFrameReady;
 
-                // Iniciar el sensor!
+                // Iniciar el sensor
                 try
                 {
                     sensor.Start();
