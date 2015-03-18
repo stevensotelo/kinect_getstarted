@@ -187,7 +187,7 @@ namespace KinectWPF
             }
             using (DrawingContext dc = grupoDibujo.Open())
             {
-                // Draw a transparent background to set the render size
+                // Dibuja un backgroun transparente y fija el tamaño
                 dc.DrawRectangle(Brushes.Black, null, new Rect(0.0, 0.0, sensor.ColorStream.FrameWidth, sensor.ColorStream.FrameHeight));
                 if (esqueletos.Length != 0)
                 {
@@ -199,8 +199,8 @@ namespace KinectWPF
                             dc.DrawEllipse(brushCentroPunto, null, SkeletonPointToScreen(esqueleto.Position), espesorCentroCuerpo, espesorCentroCuerpo);
                     }
                 }
-                // prevent drawing outside of our render area
-                grupoDibujo.ClipGeometry = new RectangleGeometry(new Rect(0.0, 0.0, RenderWidth, RenderHeight));
+                // Previene dibujar fuera del area
+                //grupoDibujo.ClipGeometry = new RectangleGeometry(new Rect(0.0, 0.0, RenderWidth, RenderHeight));
             }
         }
 
@@ -234,46 +234,43 @@ namespace KinectWPF
             // Articulaciones
             foreach (Joint articulacion in skeleton.Joints)
             {
-                Brush drawBrush = null;
+                Brush brocha = null;
                 if (articulacion.TrackingState == JointTrackingState.Tracked)
-                    drawBrush = brushHueso;
+                    brocha = brushHueso;
                 else if (articulacion.TrackingState == JointTrackingState.Inferred)
-                    drawBrush = brushInfrarojo;
+                    brocha = brushInfrarojo;
 
-                if (drawBrush != null)
-                    drawingContext.DrawEllipse(drawBrush, null, SkeletonPointToScreen(articulacion.Position), espesorArticulacion, espesorArticulacion);
+                if (brocha != null)
+                    drawingContext.DrawEllipse(brocha, null, SkeletonPointToScreen(articulacion.Position), espesorArticulacion, espesorArticulacion);
             }
         }
 
         
         private Point SkeletonPointToScreen(SkeletonPoint skelpoint)
         {
-            // Convert point to depth space.  
-            // We are not using depth directly, but we do want the points in our 640x480 output resolution.
+            // Convierte el punto en espacio de profundidad.              
             DepthImagePoint depthPoint = sensor.CoordinateMapper.MapSkeletonPointToDepthPoint(skelpoint, DepthImageFormat.Resolution640x480Fps30);
             return new Point(depthPoint.X, depthPoint.Y);
         }
 
         
-        private void dibujarHueso(Skeleton skeleton, DrawingContext drawingContext, JointType typoArticulacion0, JointType typoArticulacion1)
+        private void dibujarHueso(Skeleton skeleton, DrawingContext dibujador, JointType typoArticulacion0, JointType typoArticulacion1)
         {
             Joint joint0 = skeleton.Joints[typoArticulacion0];
             Joint joint1 = skeleton.Joints[typoArticulacion1];
 
-            // If we can't find either of these joints, exit
+            // Si no encuentra las articulaciones se sale
             if (joint0.TrackingState == JointTrackingState.NotTracked || joint1.TrackingState == JointTrackingState.NotTracked)
                 return;
-
-            // Don't draw if both points are inferred
+            // Sino encuentra los puntos del infrarojo se sale
             if (joint0.TrackingState == JointTrackingState.Inferred && joint1.TrackingState == JointTrackingState.Inferred)
                 return;
-
-            // We assume all drawn bones are inferred unless BOTH joints are tracked
-            Pen drawPen = lapizInfrarojoHueso;
+            // Se asume que la profundidad y el infrarojo fueron encontrados
+            Pen lapiz = lapizInfrarojoHueso;
             if (joint0.TrackingState == JointTrackingState.Tracked && joint1.TrackingState == JointTrackingState.Tracked)
-                drawPen = lapizHueso;
+                lapiz = lapizHueso;
 
-            drawingContext.DrawLine(drawPen, SkeletonPointToScreen(joint0.Position), SkeletonPointToScreen(joint1.Position));
+            dibujador.DrawLine(lapiz, SkeletonPointToScreen(joint0.Position), SkeletonPointToScreen(joint1.Position));
         }
     }
 }
