@@ -22,7 +22,7 @@ namespace KinectWPF
     /// </summary>
     public partial class MainWindow : Window
     {
-        private KinectSensor sensor;
+        private static KinectSensor sensor;
         // Color
         private WriteableBitmap colorBitmap;
         private byte[] colorPixels;
@@ -31,16 +31,19 @@ namespace KinectWPF
         private WriteableBitmap depthBitmap;
         private byte[] depthBufferPixels;
         // Esqueleto
-        private double espesorArticulacion = 2;
-        private double espesorCentroCuerpo = 10;
-        private double espesorRectangulos = 10;
-        private Brush brushCentroPunto = Brushes.Blue;
-        private Brush brushHueso = new SolidColorBrush(Color.FromArgb(255, 68, 192, 68));
-        private Brush brushInfrarojo = Brushes.Yellow;
-        private Pen lapizHueso = new Pen(Brushes.Green, 6);
-        private Pen lapizInfrarojoHueso = new Pen(Brushes.Gray, 1);
-        private DrawingGroup grupoDibujo;
-        private DrawingImage imagen;
+        private static double espesorArticulacion = 2;
+        private static double espesorCentroCuerpo = 10;
+        private static double espesorRectangulos = 10;
+        private static Brush brushCentroPunto = Brushes.Blue;
+        private static Brush brushHueso = new SolidColorBrush(Color.FromArgb(255, 68, 192, 68));
+        private static Brush brushInfrarojo = Brushes.Yellow;
+        private static Pen lapizHueso = new Pen(Brushes.Green, 6);
+        private static Pen lapizInfrarojoHueso = new Pen(Brushes.Gray, 1);
+        private static DrawingGroup grupoDibujo;
+        private static DrawingImage imagenEsqueleto;
+
+        private static int RenderWidth { get { return sensor.ColorStream.FrameWidth; } }
+        private static int RenderHeight { get { return sensor.ColorStream.FrameHeight; } }
 
 
         public MainWindow()
@@ -71,9 +74,9 @@ namespace KinectWPF
 
                 // Color                
                 // Tamaño de espacio de los pixel a recibir
-                colorPixels = new byte[this.sensor.ColorStream.FramePixelDataLength];
+                colorPixels = new byte[sensor.ColorStream.FramePixelDataLength];
                 // Brush que pintara el bitmap
-                this.colorBitmap = new WriteableBitmap(this.sensor.ColorStream.FrameWidth, this.sensor.ColorStream.FrameHeight, 96.0, 96.0, PixelFormats.Bgr32, null);
+                colorBitmap = new WriteableBitmap(sensor.ColorStream.FrameWidth, sensor.ColorStream.FrameHeight, 96.0, 96.0, PixelFormats.Bgr32, null);
                 // Configurar la imagen a mostrar
                 imgStreamColor.Source = colorBitmap;
                 // Manejador de eventos del color stream
@@ -92,226 +95,51 @@ namespace KinectWPF
                 sensor.DepthFrameReady += SensorDepthFrameReady;
 
                 // Esqueleto
+                // Grupo de Dibujo
+                grupoDibujo = new DrawingGroup();
+                // Imagen del esqueleto
+                imagenEsqueleto = new DrawingImage(grupoDibujo);
+                // Destino de imagen
+                imgEsqueleto.Source = imagenEsqueleto;
                 // Manejador de eventos de esqueleto
                 sensor.SkeletonFrameReady += SkeletoStreamReady;
+                // Calibración
+                sensor.SkeletonStream.TrackingMode = SkeletonTrackingMode.Seated;
+                //sensor.SkeletonStream.TrackingMode = SkeletonTrackingMode.Default;
 
                 // Iniciar el sensor
-                try
-                {
-                    sensor.Start();
-                }
-                catch (IOException)
-                {
-                    this.sensor = null;
-                }
+                sensor.Start();
             }
         }
 
-        private static void RenderBordes(Skeleton skeleton, DrawingContext drawingContext)
+        private void cmdActivar_Click(object sender, RoutedEventArgs e)
         {
-            if (skeleton.ClippedEdges.HasFlag(FrameEdges.Bottom))
+            if (cmdActivar.Content.ToString() == "Activar Kinect")
             {
-                drawingContext.DrawRectangle(
-                    Brushes.Red,
-                    null,
-                    new Rect(0, RenderHeight - ClipBoundsThickness, RenderWidth, ClipBoundsThickness));
+                initKinect();
+                cmdActivar.Content = "Detener Kinect";
             }
-
-            if (skeleton.ClippedEdges.HasFlag(FrameEdges.Top))
+            else
             {
-                drawingContext.DrawRectangle(
-                    Brushes.Red,
-                    null,
-                    new Rect(0, 0, RenderWidth, ClipBoundsThickness));
-            }
-
-            if (skeleton.ClippedEdges.HasFlag(FrameEdges.Left))
-            {
-                drawingContext.DrawRectangle(
-                    Brushes.Red,
-                    null,
-                    new Rect(0, 0, ClipBoundsThickness, RenderHeight));
-            }
-
-            if (skeleton.ClippedEdges.HasFlag(FrameEdges.Right))
-            {
-                drawingContext.DrawRectangle(
-                    Brushes.Red,
-                    null,
-                    new Rect(RenderWidth - ClipBoundsThickness, 0, ClipBoundsThickness, RenderHeight));
+                if (sensor != null)
+                    sensor.Stop();
+                cmdActivar.Content = "Activar Kinect";
             }
         }
 
-        private void SkeletoStreamReady(object sender, SkeletonFrameReadyEventArgs e)
+        private void SensorColorFrameReady(object sender, ColorImageFrameReadyEventArgs e)
         {
-            Skeleton[] esqueletos = new Skeleton[0];
-            using (SkeletonFrame skeletonFrame = e.OpenSkeletonFrame())
+            using (ColorImageFrame colorFrame = e.OpenColorImageFrame())
             {
-                if (skeletonFrame != null)
+                if (colorFrame != null)
                 {
-                    esqueletos = new Skeleton[skeletonFrame.SkeletonArrayLength];
-                    skeletonFrame.CopySkeletonDataTo(esqueletos);
-                }
-            }
-            using (DrawingContext dc = grupoDibujo.Open())
-            {
-                // Draw a transparent background to set the render size
-                dc.DrawRectangle(Brushes.Black, null, new Rect(0.0, 0.0, sensor.ColorStream.FrameWidth,sensor.ColorStream.FrameHeight));
-
-                if (esqueletos.Length != 0)
-                {
-                    foreach (Skeleton esqueleto in esqueletos)
-                    {
-                        RenderBordes(esqueleto, dc);
-
-                        if (esqueleto.TrackingState == SkeletonTrackingState.Tracked)
-                        {
-                            this.DrawBonesAndJoints(esqueleto, dc);
-                        }
-                        else if (esqueleto.TrackingState == SkeletonTrackingState.PositionOnly)
-                        {
-                            dc.DrawEllipse(
-                            this.centerPointBrush,
-                            null,
-                            this.SkeletonPointToScreen(esqueleto.Position),
-                            BodyCenterThickness,
-                            BodyCenterThickness);
-                        }
-                    }
-                }
-
-                // prevent drawing outside of our render area
-                grupoDibujo.ClipGeometry = new RectangleGeometry(new Rect(0.0, 0.0, RenderWidth, RenderHeight));
-            }
-        }
-
-        /// <summary>
-        /// Draws a skeleton's bones and joints
-        /// </summary>
-        /// <param name="skeleton">skeleton to draw</param>
-        /// <param name="drawingContext">drawing context to draw to</param>
-        private void DrawBonesAndJoints(Skeleton skeleton, DrawingContext drawingContext)
-        {
-            // Render Torso
-            this.DrawBone(skeleton, drawingContext, JointType.Head, JointType.ShoulderCenter);
-            this.DrawBone(skeleton, drawingContext, JointType.ShoulderCenter, JointType.ShoulderLeft);
-            this.DrawBone(skeleton, drawingContext, JointType.ShoulderCenter, JointType.ShoulderRight);
-            this.DrawBone(skeleton, drawingContext, JointType.ShoulderCenter, JointType.Spine);
-            this.DrawBone(skeleton, drawingContext, JointType.Spine, JointType.HipCenter);
-            this.DrawBone(skeleton, drawingContext, JointType.HipCenter, JointType.HipLeft);
-            this.DrawBone(skeleton, drawingContext, JointType.HipCenter, JointType.HipRight);
-
-            // Left Arm
-            this.DrawBone(skeleton, drawingContext, JointType.ShoulderLeft, JointType.ElbowLeft);
-            this.DrawBone(skeleton, drawingContext, JointType.ElbowLeft, JointType.WristLeft);
-            this.DrawBone(skeleton, drawingContext, JointType.WristLeft, JointType.HandLeft);
-
-            // Right Arm
-            this.DrawBone(skeleton, drawingContext, JointType.ShoulderRight, JointType.ElbowRight);
-            this.DrawBone(skeleton, drawingContext, JointType.ElbowRight, JointType.WristRight);
-            this.DrawBone(skeleton, drawingContext, JointType.WristRight, JointType.HandRight);
-
-            // Left Leg
-            this.DrawBone(skeleton, drawingContext, JointType.HipLeft, JointType.KneeLeft);
-            this.DrawBone(skeleton, drawingContext, JointType.KneeLeft, JointType.AnkleLeft);
-            this.DrawBone(skeleton, drawingContext, JointType.AnkleLeft, JointType.FootLeft);
-
-            // Right Leg
-            this.DrawBone(skeleton, drawingContext, JointType.HipRight, JointType.KneeRight);
-            this.DrawBone(skeleton, drawingContext, JointType.KneeRight, JointType.AnkleRight);
-            this.DrawBone(skeleton, drawingContext, JointType.AnkleRight, JointType.FootRight);
-
-            // Render Joints
-            foreach (Joint joint in skeleton.Joints)
-            {
-                Brush drawBrush = null;
-
-                if (joint.TrackingState == JointTrackingState.Tracked)
-                {
-                    drawBrush = this.trackedJointBrush;
-                }
-                else if (joint.TrackingState == JointTrackingState.Inferred)
-                {
-                    drawBrush = this.inferredJointBrush;
-                }
-
-                if (drawBrush != null)
-                {
-                    drawingContext.DrawEllipse(drawBrush, null, this.SkeletonPointToScreen(joint.Position), JointThickness, JointThickness);
+                    // Copiar los pixeles a un array temporal
+                    colorFrame.CopyPixelDataTo(colorPixels);
+                    // Escribir pixel en bitmap actual
+                    colorBitmap.WritePixels(new Int32Rect(0, 0, colorBitmap.PixelWidth, colorBitmap.PixelHeight), colorPixels, colorBitmap.PixelWidth * sizeof(int), 0);
                 }
             }
         }
-
-        /// <summary>
-        /// Maps a SkeletonPoint to lie within our render space and converts to Point
-        /// </summary>
-        /// <param name="skelpoint">point to map</param>
-        /// <returns>mapped point</returns>
-        private Point SkeletonPointToScreen(SkeletonPoint skelpoint)
-        {
-            // Convert point to depth space.  
-            // We are not using depth directly, but we do want the points in our 640x480 output resolution.
-            DepthImagePoint depthPoint = this.sensor.CoordinateMapper.MapSkeletonPointToDepthPoint(skelpoint, DepthImageFormat.Resolution640x480Fps30);
-            return new Point(depthPoint.X, depthPoint.Y);
-        }
-
-        /// <summary>
-        /// Draws a bone line between two joints
-        /// </summary>
-        /// <param name="skeleton">skeleton to draw bones from</param>
-        /// <param name="drawingContext">drawing context to draw to</param>
-        /// <param name="jointType0">joint to start drawing from</param>
-        /// <param name="jointType1">joint to end drawing at</param>
-        private void DrawBone(Skeleton skeleton, DrawingContext drawingContext, JointType jointType0, JointType jointType1)
-        {
-            Joint joint0 = skeleton.Joints[jointType0];
-            Joint joint1 = skeleton.Joints[jointType1];
-
-            // If we can't find either of these joints, exit
-            if (joint0.TrackingState == JointTrackingState.NotTracked ||
-                joint1.TrackingState == JointTrackingState.NotTracked)
-            {
-                return;
-            }
-
-            // Don't draw if both points are inferred
-            if (joint0.TrackingState == JointTrackingState.Inferred &&
-                joint1.TrackingState == JointTrackingState.Inferred)
-            {
-                return;
-            }
-
-            // We assume all drawn bones are inferred unless BOTH joints are tracked
-            Pen drawPen = this.inferredBonePen;
-            if (joint0.TrackingState == JointTrackingState.Tracked && joint1.TrackingState == JointTrackingState.Tracked)
-            {
-                drawPen = this.trackedBonePen;
-            }
-
-            drawingContext.DrawLine(drawPen, this.SkeletonPointToScreen(joint0.Position), this.SkeletonPointToScreen(joint1.Position));
-        }
-
-        /// <summary>
-        /// Handles the checking or unchecking of the seated mode combo box
-        /// </summary>
-        /// <param name="sender">object sending the event</param>
-        /// <param name="e">event arguments</param>
-        private void CheckBoxSeatedModeChanged(object sender, RoutedEventArgs e)
-        {
-            if (null != this.sensor)
-            {
-                if (this.checkBoxSeatedMode.IsChecked.GetValueOrDefault())
-                {
-                    this.sensor.SkeletonStream.TrackingMode = SkeletonTrackingMode.Seated;
-                }
-                else
-                {
-                    this.sensor.SkeletonStream.TrackingMode = SkeletonTrackingMode.Default;
-                }
-            }
-        }
-
-       
 
         private void SensorDepthFrameReady(object sender, DepthImageFrameReadyEventArgs e)
         {
@@ -321,14 +149,12 @@ namespace KinectWPF
                 {
                     // Copiar pixeles a memoria temporal
                     depthFrame.CopyDepthImagePixelDataTo(depthPixels);
-
                     // Maximo y minimo de profundidad
                     int minDepth = depthFrame.MinDepth;
                     int maxDepth = depthFrame.MaxDepth;
-
                     // Convercion de profundidad a RGB
                     int colorPixelIndex = 0;
-                    for (int i = 0; i < this.depthPixels.Length; ++i)
+                    for (int i = 0; i < depthPixels.Length; ++i)
                     {
                         // Obtener la profundidad del pixel
                         short depth = depthPixels[i].Depth;
@@ -348,36 +174,106 @@ namespace KinectWPF
             }
         }
 
-        private void SensorColorFrameReady(object sender, ColorImageFrameReadyEventArgs e)
+        private void SkeletoStreamReady(object sender, SkeletonFrameReadyEventArgs e)
         {
-            using (ColorImageFrame colorFrame = e.OpenColorImageFrame())
+            Skeleton[] esqueletos = new Skeleton[0];
+            using (SkeletonFrame skeletonFrame = e.OpenSkeletonFrame())
             {
-                if (colorFrame != null)
+                if (skeletonFrame != null)
                 {
-                    // Copiar los pixeles a un array temporal
-                    colorFrame.CopyPixelDataTo(colorPixels);
-                    // Escribir pixel en bitmap actual
-                    colorBitmap.WritePixels(new Int32Rect(0, 0, colorBitmap.PixelWidth, colorBitmap.PixelHeight), colorPixels, colorBitmap.PixelWidth * sizeof(int), 0);
+                    esqueletos = new Skeleton[skeletonFrame.SkeletonArrayLength];
+                    skeletonFrame.CopySkeletonDataTo(esqueletos);
                 }
             }
+            using (DrawingContext dc = grupoDibujo.Open())
+            {
+                // Draw a transparent background to set the render size
+                dc.DrawRectangle(Brushes.Black, null, new Rect(0.0, 0.0, sensor.ColorStream.FrameWidth, sensor.ColorStream.FrameHeight));
+                if (esqueletos.Length != 0)
+                {
+                    foreach (Skeleton esqueleto in esqueletos)
+                    {
+                        if (esqueleto.TrackingState == SkeletonTrackingState.Tracked)
+                            dibujarHuesosArticulaciones(esqueleto, dc);
+                        else if (esqueleto.TrackingState == SkeletonTrackingState.PositionOnly)
+                            dc.DrawEllipse(brushCentroPunto, null, SkeletonPointToScreen(esqueleto.Position), espesorCentroCuerpo, espesorCentroCuerpo);
+                    }
+                }
+                // prevent drawing outside of our render area
+                grupoDibujo.ClipGeometry = new RectangleGeometry(new Rect(0.0, 0.0, RenderWidth, RenderHeight));
+            }
         }
 
-        private void cmdActivar_Click(object sender, RoutedEventArgs e)
+        
+        private void dibujarHuesosArticulaciones(Skeleton skeleton, DrawingContext drawingContext)
         {
-            if (cmdActivar.Content.ToString() == "Activar Kinect")
+            // Torso
+            dibujarHueso(skeleton, drawingContext, JointType.Head, JointType.ShoulderCenter);
+            dibujarHueso(skeleton, drawingContext, JointType.ShoulderCenter, JointType.ShoulderLeft);
+            dibujarHueso(skeleton, drawingContext, JointType.ShoulderCenter, JointType.ShoulderRight);
+            dibujarHueso(skeleton, drawingContext, JointType.ShoulderCenter, JointType.Spine);
+            dibujarHueso(skeleton, drawingContext, JointType.Spine, JointType.HipCenter);
+            dibujarHueso(skeleton, drawingContext, JointType.HipCenter, JointType.HipLeft);
+            dibujarHueso(skeleton, drawingContext, JointType.HipCenter, JointType.HipRight);
+            // Brazo izquierdo
+            dibujarHueso(skeleton, drawingContext, JointType.ShoulderLeft, JointType.ElbowLeft);
+            dibujarHueso(skeleton, drawingContext, JointType.ElbowLeft, JointType.WristLeft);
+            dibujarHueso(skeleton, drawingContext, JointType.WristLeft, JointType.HandLeft);
+            // Brazo derecho
+            dibujarHueso(skeleton, drawingContext, JointType.ShoulderRight, JointType.ElbowRight);
+            dibujarHueso(skeleton, drawingContext, JointType.ElbowRight, JointType.WristRight);
+            dibujarHueso(skeleton, drawingContext, JointType.WristRight, JointType.HandRight);
+            // Pierna izquierda
+            dibujarHueso(skeleton, drawingContext, JointType.HipLeft, JointType.KneeLeft);
+            dibujarHueso(skeleton, drawingContext, JointType.KneeLeft, JointType.AnkleLeft);
+            dibujarHueso(skeleton, drawingContext, JointType.AnkleLeft, JointType.FootLeft);
+            // Pierna derecha
+            dibujarHueso(skeleton, drawingContext, JointType.HipRight, JointType.KneeRight);
+            dibujarHueso(skeleton, drawingContext, JointType.KneeRight, JointType.AnkleRight);
+            dibujarHueso(skeleton, drawingContext, JointType.AnkleRight, JointType.FootRight);
+            // Articulaciones
+            foreach (Joint articulacion in skeleton.Joints)
             {
-                initKinect();
-                cmdActivar.Content = "Detener Kinect";
-            }
-            else
-            {
-                if (sensor != null)
-                    sensor.Stop();
-                cmdActivar.Content = "Activar Kinect";
+                Brush drawBrush = null;
+                if (articulacion.TrackingState == JointTrackingState.Tracked)
+                    drawBrush = brushHueso;
+                else if (articulacion.TrackingState == JointTrackingState.Inferred)
+                    drawBrush = brushInfrarojo;
+
+                if (drawBrush != null)
+                    drawingContext.DrawEllipse(drawBrush, null, SkeletonPointToScreen(articulacion.Position), espesorArticulacion, espesorArticulacion);
             }
         }
 
+        
+        private Point SkeletonPointToScreen(SkeletonPoint skelpoint)
+        {
+            // Convert point to depth space.  
+            // We are not using depth directly, but we do want the points in our 640x480 output resolution.
+            DepthImagePoint depthPoint = sensor.CoordinateMapper.MapSkeletonPointToDepthPoint(skelpoint, DepthImageFormat.Resolution640x480Fps30);
+            return new Point(depthPoint.X, depthPoint.Y);
+        }
 
+        
+        private void dibujarHueso(Skeleton skeleton, DrawingContext drawingContext, JointType typoArticulacion0, JointType typoArticulacion1)
+        {
+            Joint joint0 = skeleton.Joints[typoArticulacion0];
+            Joint joint1 = skeleton.Joints[typoArticulacion1];
 
+            // If we can't find either of these joints, exit
+            if (joint0.TrackingState == JointTrackingState.NotTracked || joint1.TrackingState == JointTrackingState.NotTracked)
+                return;
+
+            // Don't draw if both points are inferred
+            if (joint0.TrackingState == JointTrackingState.Inferred && joint1.TrackingState == JointTrackingState.Inferred)
+                return;
+
+            // We assume all drawn bones are inferred unless BOTH joints are tracked
+            Pen drawPen = lapizInfrarojoHueso;
+            if (joint0.TrackingState == JointTrackingState.Tracked && joint1.TrackingState == JointTrackingState.Tracked)
+                drawPen = lapizHueso;
+
+            drawingContext.DrawLine(drawPen, SkeletonPointToScreen(joint0.Position), SkeletonPointToScreen(joint1.Position));
+        }
     }
 }
